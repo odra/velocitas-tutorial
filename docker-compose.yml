@@ -1,0 +1,58 @@
+version: "3.9"
+services:
+  mosquito:
+    image: "docker.io/library/eclipse-mosquitto:2.0.14"
+    command:
+      - "mosquitto"
+      - "-c"
+      - "/mosquitto-no-auth.conf"
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+  databroker:
+    image: "ghcr.io/eclipse/kuksa.val/databroker:v0.17.0"
+    ports:
+      - "55555:55555"
+      - "52001:52001"
+    environment:
+      - "DATABROKER_GRPC_PORT=52001"
+      - "RUST_LOG=info,databroker=info,vehicle_data_broker=info"
+  seatservice:
+    image: "ghcr.io/eclipse/kuksa.val.services/seat_service:v0.1.0"
+    ports:
+      - "50051:50051"
+      - "52002:52002"
+    environment:
+      # - "VEHICLEDATABROKER_DAPR_APP_ID=vehicledatabroker"
+      - "CAN=cansim"
+      # - "DAPR_GRPC_PORT=52002"
+      - "BROKER_ADDR=databroker:55555"
+      - "RUST_LOG=info,databroker=info,vehicle_data_broker=info"
+    depends_on:
+      - "databroker"
+    links:
+      - "databroker:databroker"
+  feedercan:
+    image: "ghcr.io/eclipse/kuksa.val.feeders/dbc2val:v0.1.0"
+    environment:
+      # - "VEHICLEDATABROKER_DAPR_APP_ID==vehicledatabroker"
+      # - "DAPR_GRPC_PORT=52001"
+      - "LOG_LEVEL=info,databroker=info,dbcfeeder.broker_client=info,dbcfeeder=info"
+      - "USECASE=databroker"
+      - "CANDUMP_FILE=/data/candumpDefault.log"
+      - "DBC_FILE=/data/dbcfileDefault.dbc"
+      - "MAPPING_FILE=/data/mappingDefault.yml"
+      - "VDB_ADDRESS=databroker:55555"
+    volumes:
+      - "./deploy/runtime/k3d/volume:/data:z"
+    depends_on:
+      - "databroker"
+    links:
+      - "databroker:databroker"
+  app:
+    build: "./app"
+    ports:
+      - "5000:5000"
+    depends_on:
+      - databroker
+      - seatservice
